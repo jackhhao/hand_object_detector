@@ -39,6 +39,8 @@ from model.faster_rcnn.vgg16 import vgg16
 from model.faster_rcnn.resnet import resnet
 import pdb
 
+import pathlib
+
 try:
     xrange          # Python 2
 except NameError:
@@ -259,8 +261,8 @@ if __name__ == '__main__':
           im_in = np.array(frame)
         # Load the demo image
         else:
-          im_file = os.path.join(args.image_dir, imglist[num_images])
-          im_in = cv2.imread(im_file)
+          im_file = (pathlib.Path(args.image_dir).resolve() / imglist[num_images])
+          im_in = cv2.imread(im_file.as_posix())
         # bgr
         im = im_in
 
