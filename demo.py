@@ -389,6 +389,7 @@ if __name__ == '__main__':
             result_path = os.path.join(folder_name, imglist[num_images][:-4] + "_det.png")
             im2show.save(result_path)
         else:
+            im2show = np.array(im2show)
             im2showRGB = cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB)
             cv2.imshow("frame", im2showRGB)
             total_toc = time.time()
