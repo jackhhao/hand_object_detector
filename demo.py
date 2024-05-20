@@ -293,7 +293,7 @@ if __name__ == '__main__':
         scores = cls_prob.data
         boxes = rois.data[:, :, 1:5]
 
-        # extact predicted params
+        # extract predicted params
         contact_vector = loss_list[0][0] # hand contact state info
         offset_vector = loss_list[1][0].detach() # offset vector (factored into a unit vector and a magnitude)
         lr_vector = loss_list[2][0].detach() # hand side info (left/right)
@@ -383,7 +383,6 @@ if __name__ == '__main__':
             sys.stdout.flush()
 
         if vis and webcam_num == -1:
-            
             folder_name = args.save_dir
             os.makedirs(folder_name, exist_ok=True)
             result_path = os.path.join(folder_name, imglist[num_images][:-4] + "_det.png")
@@ -395,7 +394,7 @@ if __name__ == '__main__':
             total_toc = time.time()
             total_time = total_toc - total_tic
             frame_rate = 1 / total_time
-            print('Frame rate:', frame_rate)
+            print('\rFrame rate:', frame_rate, end='', flush=True)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
               
