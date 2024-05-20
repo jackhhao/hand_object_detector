@@ -67,6 +67,7 @@ def vis_detections(im, class_name, dets, thresh=0.8):
                             1.0, (0, 0, 255), thickness=1)
     return im
 
+# TODO: add option to visualize top k objects per hand
 def vis_detections_filtered_objects(im, obj_dets, hand_dets, thresh=0.8):
     """Visual debugging of detections."""
     if (obj_dets is not None) and (hand_dets is not None):
@@ -96,7 +97,7 @@ def vis_detections_filtered_objects(im, obj_dets, hand_dets, thresh=0.8):
 
 
 
-def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01, font_path='lib/model/utils/times_b.ttf'):
+def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01, font_path='lib/model/utils/times_b.ttf', top_k=1):
 
     # convert to PIL
     im = im[:,:,::-1]
@@ -106,14 +107,19 @@ def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8
     width, height = image.size 
 
     if (obj_dets is not None) and (hand_dets is not None):
-        img_obj_id = filter_object(obj_dets, hand_dets)
+        img_obj_id = filter_object(obj_dets, hand_dets, top_k)
+        print(f'{img_obj_id=}')
         for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
             bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
             score = obj_dets[i, 4]
-            if score > thresh_obj and i in img_obj_id:
+            
+            if top_k == -1: # visualize all objects detected (above threshold)
+                image = draw_obj_mask(image, draw, obj_idx, bbox, score, width, height, font)
+            # only visualize top k objects (img_obj_id has list of top k objects for each hand)
+            elif score > thresh_obj and any(i in ids for ids in img_obj_id):
                 # viz obj by PIL
                 image = draw_obj_mask(image, draw, obj_idx, bbox, score, width, height, font)
-
+           
         for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
             bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
             score = hand_dets[i, 4]
@@ -124,19 +130,13 @@ def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8
                 image = draw_hand_mask(image, draw, hand_idx, bbox, score, lr, state, width, height, font)
 
                 if state > 0: # in contact hand
+                    for obj_index in img_obj_id[i]: # checks each potential object candidate for a given hand
+                        if obj_index >= 0:  # ensures valid object index
+                            obj_cc = calculate_center(obj_dets[obj_index, :4])
+                            hand_cc = calculate_center(bbox)
+                            draw_line_point(draw, int(lr), (int(hand_cc[0]), int(hand_cc[1])), (int(obj_cc[0]), int(obj_cc[1]))) # draw line between hand and candidate object
 
-                    obj_cc, hand_cc =  calculate_center(obj_dets[img_obj_id[i],:4]), calculate_center(bbox)
-                    # viz line by PIL
-                    if lr == 0:
-                        side_idx = 0
-                    elif lr == 1:
-                        side_idx = 1
-                    draw_line_point(draw, side_idx, (int(hand_cc[0]), int(hand_cc[1])), (int(obj_cc[0]), int(obj_cc[1])))
-
-
-        
-
-    elif hand_dets is not None:
+    elif hand_dets is not None: # only hands, no objects detected
         image = vis_detections_PIL(im, 'hand', hand_dets, thresh_hand, font_path)
         
     return image
@@ -164,8 +164,7 @@ def vis_detections_PIL(im, class_name, dets, thresh=0.8, font_path='lib/model/ut
 def calculate_center(bb):
     return [(bb[0] + bb[2])/2, (bb[1] + bb[3])/2]
 
-def filter_object(obj_dets, hand_dets):
-    filtered_object = []
+def filter_object(obj_dets, hand_dets, top_k=2, thresh_dist=100): # TODO: threshold distance based on hand/object bounding box IoU
     object_cc_list = []
     for j in range(obj_dets.shape[0]):
         object_cc_list.append(calculate_center(obj_dets[j,:4]))
@@ -173,13 +172,27 @@ def filter_object(obj_dets, hand_dets):
     img_obj_id = []
     for i in range(hand_dets.shape[0]):
         if hand_dets[i, 5] <= 0:
-            img_obj_id.append(-1)
+            img_obj_id.append([])
             continue
-        hand_cc = np.array(calculate_center(hand_dets[i,:4]))
-        point_cc = np.array([(hand_cc[0]+hand_dets[i,6]*10000*hand_dets[i,7]), (hand_cc[1]+hand_dets[i,6]*10000*hand_dets[i,8])])
+        hand_bbox = hand_dets[i,:4]
+        hand_cc = np.array(calculate_center(hand_bbox))
+        point_cc = np.array([
+            (hand_cc[0]+hand_dets[i,6]*10000*hand_dets[i,7]),
+            (hand_cc[1]+hand_dets[i,6]*10000*hand_dets[i,8])
+        ])
         dist = np.sum((object_cc_list - point_cc)**2,axis=1)
-        dist_min = np.argmin(dist)
-        img_obj_id.append(dist_min)
+
+        # filter distances based on the threshold
+        valid_indices = np.where(dist < thresh_dist ** 2)[0]
+        if len(valid_indices) > 0:
+            candidate_objs = dist[valid_indices].argsort()[:top_k] # get top k candidate objects for current hand
+            img_obj_id.append(valid_indices[candidate_objs].tolist())
+        else:
+            img_obj_id.append([])  # no valid objects within the threshold
+
+        # get top k candidate objects
+        # candidate_objs = dist.argsort()[:top_k] # TODO: add manual distance threshold
+        # img_obj_id.append(candidate_objs.tolist())
     return img_obj_id
 
 def adjust_learning_rate(optimizer, decay=0.1):
