@@ -114,6 +114,8 @@ def parse_args():
 						type=int)
 	parser.add_argument('--top_k', default=1,
 						type=int)
+	parser.add_argument('--thresh_dist', default=500,
+						type=float)
 
 	args = parser.parse_args()
 	return args
@@ -236,6 +238,7 @@ if __name__ == '__main__':
 		max_per_image = 100
 		thresh_hand = args.thresh_hand 
 		thresh_obj = args.thresh_obj
+		thresh_dist = args.thresh_dist
 		vis = args.vis
 		buffer_size = args.buffer_size
 		top_k = args.top_k

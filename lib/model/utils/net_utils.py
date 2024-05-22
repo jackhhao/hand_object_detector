@@ -97,7 +97,16 @@ def vis_detections_filtered_objects(im, obj_dets, hand_dets, thresh=0.8):
 
 
 
-def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8, thresh_obj=0.01, font_path='lib/model/utils/times_b.ttf', top_k=1):
+def vis_detections_filtered_objects_PIL(
+    im,
+    obj_dets,
+    hand_dets,
+    thresh_hand=0.8,
+    thresh_obj=0.01,
+    font_path='lib/model/utils/times_b.ttf',
+    top_k=1,
+    thresh_dist=500
+):
 
     # convert to PIL
     im = im[:,:,::-1]
@@ -107,7 +116,7 @@ def vis_detections_filtered_objects_PIL(im, obj_dets, hand_dets, thresh_hand=0.8
     width, height = image.size 
 
     if (obj_dets is not None) and (hand_dets is not None):
-        img_obj_id = filter_object(obj_dets, hand_dets, top_k)
+        img_obj_id = filter_object(obj_dets, hand_dets, top_k, thresh_dist)
         print(f'{img_obj_id=}')
         for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
             bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
@@ -164,7 +173,7 @@ def vis_detections_PIL(im, class_name, dets, thresh=0.8, font_path='lib/model/ut
 def calculate_center(bb):
     return [(bb[0] + bb[2])/2, (bb[1] + bb[3])/2]
 
-def filter_object(obj_dets, hand_dets, top_k=2, thresh_dist=100): # TODO: threshold distance based on hand/object bounding box IoU
+def filter_object(obj_dets, hand_dets, top_k=1, thresh_dist=500): # TODO: threshold distance based on hand/object bounding box IoU
     object_cc_list = []
     for j in range(obj_dets.shape[0]):
         object_cc_list.append(calculate_center(obj_dets[j,:4]))
