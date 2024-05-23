@@ -117,7 +117,7 @@ def vis_detections_filtered_objects_PIL(
 
     if (obj_dets is not None) and (hand_dets is not None):
         img_obj_id = filter_object(obj_dets, hand_dets, top_k, thresh_dist)
-        print(f'{img_obj_id=}')
+        # print(f'{img_obj_id=}')
         for obj_idx, i in enumerate(range(np.minimum(10, obj_dets.shape[0]))):
             bbox = list(int(np.round(x)) for x in obj_dets[i, :4])
             score = obj_dets[i, 4]
