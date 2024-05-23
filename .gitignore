@@ -8,6 +8,8 @@
 
 ## PyTorch
 
+old/
+
 data/
 data_preparation/
 data_preparation_no_objectionable/
@@ -22,12 +24,11 @@ models/*
 predata_dandan/multitask/*.json
 predata_dandan/
 
-
 output/
+out*/
 lib/datasets/compare_eval/
 backup/
-pick_2/ 
-images/
+pick_2/
 logs/
 
 README_details.md
