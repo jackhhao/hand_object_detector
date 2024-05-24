@@ -32,17 +32,22 @@ from model.rpn.bbox_transform import clip_boxes
 from model.roi_layers import nms
 from model.rpn.bbox_transform import bbox_transform_inv
 from model.utils.net_utils import (save_net,
-								load_net,
-								vis_detections,
-								vis_detections_PIL,
-								vis_detections_filtered_objects_PIL,
-								vis_detections_filtered_objects)
+								   load_net,
+								   vis_detections,
+								   vis_detections_PIL,
+								   vis_detections_filtered_objects_PIL,
+								   vis_detections_filtered_objects,
+								   filter_object,
+		   						   calculate_center)
 from model.utils.blob import im_list_to_blob
 from model.faster_rcnn.vgg16 import vgg16
 from model.faster_rcnn.resnet import resnet
 
 import pathlib
 from collections import deque
+from itertools import chain
+
+from value_trackers import StateTracker, AccelerationTracker, MovementTracker
 
 STATE_MAP = {0: 'No Contact', 1: 'Self Contact', 2: 'Another Person', 3: 'Portable Object', 4: 'Stationary Object'}
 pascal_classes = np.asarray(['__background__', 'targetobject', 'hand'])
@@ -272,49 +277,81 @@ def detect_objects(args, scores, pred_boxes, contact_indices, offset_vector, lr)
 	 
 	return obj_dets, hand_dets, all_dets
 
-
-def get_new_contact_vals(hand_dets, thresh_hand):
-	new_vals = [False, False] # whether contact is detected in current frame
+def update_buffers(args, hand_dets, obj_dets, contact_trackers, movement_trackers, obj_tracker):
+	"""Update all trackers with new values based on detections."""
+	curr_state = [-1, -1] # default update = hand not detected. TODO: differentiate between no contact and no hand detected
+	coords = [None, None]
 	
 	if hand_dets is not None:
 		for hand_idx, i in enumerate(range(np.minimum(10, hand_dets.shape[0]))):
 			bbox = list(int(np.round(x)) for x in hand_dets[i, :4])
 			score = hand_dets[i, 4]
-			lr = hand_dets[i, -1]
+			lr_idx = int(hand_dets[i, -1])
 			# print(lr)
 			state = hand_dets[i, 5]
-			new_vals[int(lr)] = (score > thresh_hand and state == 3) # condition: hand detected and contacting portable object
-
-	return new_vals
-
-def update_buffers(detection_buffers, curr_detected, frame_buffer, new_vals, save_dir):
-	# fancy debounce
-	
-	for i,buffer in enumerate(detection_buffers):
-		lr_name = "left" if i == 0 else "right"
-		buffer.append(new_vals[i])
-
-		if all(buffer) and not curr_detected[i]:
-			print(f"detected {lr_name} start contact, stable")
-			condition = f"contact_{lr_name}"
-		elif not any(buffer) and curr_detected[i]:
-			print(f"detected {lr_name} stop contact, stable")
-			condition = f"no_contact_{lr_name}"
-		else:
-			continue
-
-		curr_detected[i] = not curr_detected[i]
+   
+			# is_contacted = (score > args.thresh_hand and state == 3) # condition: hand detected and contacting portable object
+			
+			# contact_trackers[lr_idx].update(is_contacted)
+			# movement_trackers[lr_idx].update(np.array(calculate_center(bbox)))
+   
+			if score > args.thresh_hand: # only update trackers if hand detected
+				curr_state[lr_idx] = state
+				coords[lr_idx] = np.array(calculate_center(bbox))
+			
+		if obj_dets is not None:
+			img_obj_id = filter_object(obj_dets, hand_dets, args.top_k, args.thresh_dist)
+			
+			obj_tracker.update(len(set(chain.from_iterable(img_obj_id))))
+   
+	for i in range(2):
+		contact_trackers[i].update(curr_state[i])
 		
-		old_frame = frame_buffer[0]
+		if contact_trackers[i].curr_state != 0 and coords[i] is not None:
+			movement_trackers[i].update(coords[i])
+ 
+def save_frame(save_dir, condition, frame):
+	"""Save frame to output dir with condition name."""
+	os.makedirs(save_dir, exist_ok=True)
+	result_path = os.path.join(save_dir, f'frame_{int(time.time())}_{condition}.png')
+	frame.save(result_path)
+	print(f"saved frame to {result_path}")
 
-		if old_frame is not None:
-			os.makedirs(save_dir, exist_ok=True)
-			result_path = os.path.join(save_dir, f'frame_{int(time.time())}_{condition}.png')
-			old_frame.save(result_path)
-			print(f"saved frame to {result_path}")
-		else:
-			print("just starting")
+def check_is_keyframe(contact_trackers, movement_trackers, obj_tracker, frame_buffer, save_dir):
+	"""Check if keyframe conditions are met and save frame if so."""
+	# fancy debounce
+	is_keyframe = False
+	condition = ""
+ 
+	for i in range(2):
+		lr_name = "left" if i == 0 else "right"
+		# print(contact_trackers[i])
+  
+		# if contact -> no contact, or no contact -> contact is detected
+		if contact_trackers[i].state_changed and (contact_trackers[i].prev_state == 3 or contact_trackers[i].curr_state == 3):
+			print(f"detected {contact_trackers[i].var} change from {contact_trackers[i].prev_state} to {contact_trackers[i].curr_state}")
+			movement_trackers[i].clear()
+			is_keyframe = True
+			condition += f"contact_{lr_name}" if contact_trackers[i].curr_state == 3 else f"no_contact_{lr_name}"
+		elif movement_trackers[i].change_detected: # if hand movement detected (slowdown heuristic)
+			print(f"detected sudden acceleration change in {lr_name}")
+			is_keyframe = True
+			condition += f"_accel_{lr_name}"
+			# print(f"detected sudden movement in {lr_name}")
+			# is_keyframe = True
+			# condition += f"_move_{lr_name}"
+	
+	# if num interacted objects changes
+	if obj_tracker.state_changed:
+		print(f"detected num object change from {obj_tracker.prev_state} to {obj_tracker.curr_state}")
+		is_keyframe = True
+		condition += f"_num_obj_{obj_tracker.curr_state}"
+		
+	old_frame = frame_buffer[0]
 
+	if is_keyframe and old_frame is not None: # check that buffer has filled up enough
+		save_frame(save_dir, condition, old_frame)
+	
 def main():
 	args = parse_args()
 
@@ -337,12 +374,30 @@ def main():
 	im_data, im_info, num_boxes, gt_boxes, box_info = prepare_tensors(args)
 	cap = initialize_video_capture(args)
 
-	detection_buffers = [
-		deque(buffer_size * [False], buffer_size),
-		deque(buffer_size * [False], buffer_size)
+	# contact state trackers, 1 per hand
+	contact_trackers = [
+		StateTracker(var='contact', size=buffer_size, default=0),
+		StateTracker(var='contact', size=buffer_size, default=0)
 	]
-	curr_detected = [False, False]
-	frame_buffer = deque(buffer_size * [None], buffer_size)
+	frame_buffer = deque(buffer_size * [None], buffer_size) # last buffer_size frames
+	# coords_buffer = [
+	#  	deque(buffer_size * [None], buffer_size),
+	#   	deque(buffer_size * [None], buffer_size)
+	# ]
+
+	obj_tracker = StateTracker(var='num_obj', size=buffer_size, default=0) # tracks number of interacted objects
+	
+	# tracks sudden changes in hand movement, 1 per hand
+	movement_trackers = [
+	 	AccelerationTracker(),
+	  	AccelerationTracker()
+	]
+ 
+	# if we use slowdown heuristic (stdev) instead
+	# movement_trackers = [
+	#  	MovementTracker(),
+	#   	MovementTracker()
+	# ]
 
 	while True:
 		ret, frame = cap.read()
@@ -359,9 +414,25 @@ def main():
 			im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj, top_k=top_k)
 		
 		frame_buffer.append(im2show)
-		new_vals = get_new_contact_vals(hand_dets, thresh_hand)
+		# new_vals = get_new_buffer_vals(hand_dets, obj_dets, thresh_hand)
 		
-		update_buffers(detection_buffers, curr_detected, frame_buffer, new_vals, save_dir)
+		# update_detection_state(detection_buffers, curr_detected, frame_buffer, new_vals, save_dir)
+  
+		update_buffers(
+	  		args=args,
+			hand_dets=hand_dets,
+		 	obj_dets=obj_dets,
+		  	contact_trackers=contact_trackers,
+		   	movement_trackers=movement_trackers,
+			obj_tracker=obj_tracker
+		)
+		check_is_keyframe(
+	  		contact_trackers=contact_trackers,
+			movement_trackers=movement_trackers,
+		 	obj_tracker=obj_tracker,
+		  	frame_buffer=frame_buffer,
+		   	save_dir=save_dir
+		)
 
 		im2show = np.array(im2show)
 		im2showRGB = cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB)
