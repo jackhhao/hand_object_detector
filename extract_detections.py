@@ -417,8 +417,8 @@ def main():
 	
 	# tracks sudden changes in hand movement, 1 per hand
 	movement_trackers = [
-	 	AccelerationTracker(),
-	  	AccelerationTracker()
+	 	AccelerationTracker(thresh_accel=thresh_accel),
+	  	AccelerationTracker(thresh_accel=thresh_accel)
 	]
  
 	# if we use slowdown heuristic (stdev) instead
@@ -439,7 +439,7 @@ def main():
 		im2show = np.copy(frame)
 		
 		if vis:
-			im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj, top_k=top_k)
+			im2show = vis_detections_filtered_objects_PIL(im2show, obj_dets, hand_dets, thresh_hand, thresh_obj, top_k=top_k, thresh_dist=thresh_dist)
 		
 		frame_buffer.append(im2show)
 		# new_vals = get_new_buffer_vals(hand_dets, obj_dets, thresh_hand)
