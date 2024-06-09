@@ -426,6 +426,8 @@ def main():
 	#  	MovementTracker(),
 	#   	MovementTracker()
 	# ]
+	frame_idx = 0
+	keyframe_idxs = []
 
 	while True:
 		ret, frame = cap.read()
@@ -454,17 +456,23 @@ def main():
 		   	movement_trackers=movement_trackers,
 			obj_tracker=obj_tracker
 		)
-		check_is_keyframe(
+		is_keyframe = check_save_keyframe(
 	  		contact_trackers=contact_trackers,
 			movement_trackers=movement_trackers,
 		 	obj_tracker=obj_tracker,
 		  	frame_buffer=frame_buffer,
-		   	save_dir=save_dir
+		   	save_dir=save_dir,
+			cooldown_period=cooldown_period
 		)
 
 		im2show = np.array(im2show)
 		im2showRGB = cv2.cvtColor(im2show, cv2.COLOR_BGR2RGB)
 		cv2.imshow("frame", im2showRGB)
+
+		if is_keyframe:
+			keyframe_idxs.append(frame_idx)
+   
+		frame_idx += 1
 
 		if (cv2.waitKey(1) & 0xFF) in (27, ord('q')):
 			break
@@ -473,6 +481,8 @@ def main():
 
 	cap.release()
 	cv2.destroyAllWindows()
+ 
+	print(keyframe_idxs)
 
 if __name__ == '__main__':
 	main()
