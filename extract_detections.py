@@ -310,7 +310,7 @@ def update_buffers(args, hand_dets, obj_dets, contact_trackers, movement_tracker
 	for i in range(2):
 		contact_trackers[i].update(curr_state[i])
 		
-		if contact_trackers[i].curr_state != 0 and coords[i] is not None:
+		if contact_trackers[i].curr_state != -1 and coords[i] is not None: # update based on newly-updated state
 			movement_trackers[i].update(coords[i])
  
 def save_frame(save_dir, condition, frame):
@@ -320,22 +320,35 @@ def save_frame(save_dir, condition, frame):
 	frame.save(result_path)
 	print(f"saved frame to {result_path}")
 
-def check_is_keyframe(contact_trackers, movement_trackers, obj_tracker, frame_buffer, save_dir):
+def check_save_keyframe(contact_trackers, movement_trackers, obj_tracker, frame_buffer, save_dir, cooldown_period):
 	"""Check if keyframe conditions are met and save frame if so."""
+	global cooldown_remaining
+	
+	# Check if enough time has passed since the last keyframe save. More efficient but don't know whether this is potential keyframe
+	# if cooldown_remaining > 0:
+	# 	print(f"cooldown remaining: {cooldown_remaining}")
+	# 	cooldown_remaining -= 1
+	# 	return False  # Do not save a keyframe if the timeout has not elapsed
+	
 	# fancy debounce
 	is_keyframe = False
 	condition = ""
- 
+	print()
 	for i in range(2):
 		lr_name = "left" if i == 0 else "right"
 		# print(contact_trackers[i])
   
 		# if contact -> no contact, or no contact -> contact is detected
-		if contact_trackers[i].state_changed and (contact_trackers[i].prev_state == 3 or contact_trackers[i].curr_state == 3):
-			print(f"detected {contact_trackers[i].var} change from {contact_trackers[i].prev_state} to {contact_trackers[i].curr_state}")
-			movement_trackers[i].clear()
-			is_keyframe = True
-			condition += f"contact_{lr_name}" if contact_trackers[i].curr_state == 3 else f"no_contact_{lr_name}"
+		if contact_trackers[i].state_changed:
+			if (contact_trackers[i].prev_state == 3 or contact_trackers[i].curr_state == 3):
+				print(f"detected {contact_trackers[i].var} change from {contact_trackers[i].prev_state} to {contact_trackers[i].curr_state}")
+				movement_trackers[i].clear()
+				is_keyframe = True
+				condition += f"contact_{lr_name}" if contact_trackers[i].curr_state == 3 else f"no_contact_{lr_name}"
+			elif contact_trackers[i].prev_state == -1 or contact_trackers[i].curr_state == -1: # needed?
+				print(f"detected {contact_trackers[i].var} change from {contact_trackers[i].prev_state} to {contact_trackers[i].curr_state}")
+				movement_trackers[i].clear()
+				# condition += f"no_hand_{lr_name}"
 		elif movement_trackers[i].change_detected: # if hand movement detected (slowdown heuristic)
 			print(f"detected sudden acceleration change in {lr_name}")
 			is_keyframe = True
@@ -391,8 +404,8 @@ def main():
 
 	# contact state trackers, 1 per hand
 	contact_trackers = [
-		StateTracker(var='contact', size=buffer_size, default=0),
-		StateTracker(var='contact', size=buffer_size, default=0)
+		StateTracker(var='contact', size=buffer_size, default=-1),
+		StateTracker(var='contact', size=buffer_size, default=-1)
 	]
 	frame_buffer = deque(buffer_size * [None], buffer_size) # last buffer_size frames
 	# coords_buffer = [
