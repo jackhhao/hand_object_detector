@@ -34,13 +34,13 @@ class StateTracker:
 
 # detects sudden changes in movement using stdev of distances
 class MovementTracker:
-    def __init__(self, size=5, thresh_stdev=10, default_timeout=5):
+    def __init__(self, size=5, thresh_stdev=10):#, default_timeout=5):
         self.coords = deque(maxlen=size)
         self.change_detected = False
         self.thresh_stdev = thresh_stdev
         
-        self.curr_timeout = 0
-        self.default_timeout = default_timeout
+        # self.curr_timeout = 0
+        # self.default_timeout = default_timeout
     
     def calculate_stdev(self):
         coords = np.array(self.coords)
@@ -120,4 +120,4 @@ class AccelerationTracker:
         for buffer in (self.positions, self.velocities, self.accelerations):
             buffer.clear()
         self.change_detected = False
-        self.curr_timeout = 0
+        # self.curr_timeout = 0

@@ -52,6 +52,7 @@ from value_trackers import StateTracker, AccelerationTracker, MovementTracker
 STATE_MAP = {0: 'No Contact', 1: 'Self Contact', 2: 'Another Person', 3: 'Portable Object', 4: 'Stationary Object'}
 pascal_classes = np.asarray(['__background__', 'targetobject', 'hand'])
 model_path = 'models/res101_handobj_100K/pascal_voc/faster_rcnn_1_8_132028.pth'
+cooldown_remaining = 0
 
 def parse_args():
 	"""Parse input arguments"""
@@ -77,6 +78,8 @@ def parse_args():
 	parser.add_argument('--buffer_size', default=5, type=int)
 	parser.add_argument('--top_k', default=1, type=int)
 	parser.add_argument('--thresh_dist', default=500, type=float)
+	parser.add_argument('--thresh_accel', default=10.0, type=float)
+	parser.add_argument('--cooldown', default=10, type=int, help='number of frames to wait before detecting next keyframe')
 
 	return parser.parse_args()
 
@@ -350,7 +353,16 @@ def check_is_keyframe(contact_trackers, movement_trackers, obj_tracker, frame_bu
 	old_frame = frame_buffer[0]
 
 	if is_keyframe and old_frame is not None: # check that buffer has filled up enough
-		save_frame(save_dir, condition, old_frame)
+		if cooldown_remaining == 0:
+			save_frame(save_dir, condition, old_frame)
+			cooldown_remaining = cooldown_period
+			return True
+		else:
+			print(f"triggered but still in cooldown for {cooldown_remaining} frames")
+
+	cooldown_remaining = max(0, cooldown_remaining - 1)
+
+	return False
 	
 def main():
 	args = parse_args()
@@ -366,6 +378,9 @@ def main():
 	top_k = args.top_k
 	vis = args.vis
 	save_dir = args.save_dir
+	cooldown_period = args.cooldown
+	thresh_dist = args.thresh_dist
+	thresh_accel = args.thresh_accel
 
 	cfg.USE_GPU_NMS = args.cuda
 	np.random.seed(cfg.RNG_SEED)
